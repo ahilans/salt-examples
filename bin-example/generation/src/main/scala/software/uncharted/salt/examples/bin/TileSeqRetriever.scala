@@ -27,7 +27,7 @@ object TileSeqRetriever {
     byteArray
   }
   //APPARENTLY METHODS CAN HAVE THEIR OWN IMPLICIT PARAMETERS AS WELL.
-  def apply[TC, T](datasetPath: String, tiles: Seq[TC], projection: NumericProjection[(Double, Double), (Int, Int, Int), (Int, Int)], valueExtractor: ((r: Row) => Option[T]), tileAggregator: Some(Aggregator), binAggregator: Aggregator): TraversableOnce(TC, Array[Byte]) = {
+  def apply[TC, T](datasetPath: String, tiles: Seq[TC], projection: NumericProjection[(Double, Double), (Int, Int, Int), (Int, Int)], binSize: Int, valueExtractor: ((r: Row) => Option[T]), tileAggregator: Some(Aggregator), binAggregator: Aggregator): TraversableOnce(TC, Array[Byte]) = {
     //for live tiling:
 
       //pass in the input data file you will be generating the tiles from
@@ -76,10 +76,10 @@ object TileSeqRetriever {
       //create coord EXTRACTOR
       // Given an input row, return pickup longitude, latitude as a tuple
       val pickupExtractor = (r: Row) => {
-        if (r.isNullAt(0) || r.isNullAt(1)) {
+        if (r.isNullAt(6) || r.isNullAt(7)) {
           None
         } else {
-          Some((r.getDouble(0), r.getDouble(1)))
+          Some((r.getDouble(6), r.getDouble(7)))
         }
       }
 
