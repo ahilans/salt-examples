@@ -6,8 +6,10 @@ import software.uncharted.salt.core.analytic.numeric._
 import software.uncharted.salt.core.analytic.collection._
 
 //import spark stuff
+import org.apache.spark.SparkContext
+import org.apache.spark.SparkConf
+import org.apache.spark.sql.SQLContext
 import org.apache.spark.sql.Row
-
 
 object Main {
   def main(args: Array[String]) = {
@@ -16,6 +18,11 @@ object Main {
       println("Too many arguments")
       System.exit(-1)
     }
+
+    //pulled out to the main because a spark applciation cannot have multiple contexts.
+    val conf = new SparkConf().setAppName("salt-bin-example")
+    val sc = new SparkContext(conf)
+    val sqlContext = new SQLContext(sc)
 
     val inputPath = args(0)
 
@@ -41,7 +48,7 @@ object Main {
     val wordCloudBinSize: Int = 0
 
 
-    val valueExtractorHeatmap = Some("") match {  //for crossplotTiling ops, you can pull out the heatmap stuff into a new interface and just mix that in can you not (mercator and cartesian will both use them)
+    val valueExtractorHeatmap = Some("userid") match {  //for crossplotTiling ops, you can pull out the heatmap stuff into a new interface and just mix that in can you not (mercator and cartesian will both use them)
       case Some(colName: String) => (r: Row) => {
         val rowIndex = r.schema.fieldIndex(colName)
         if (!r.isNullAt(rowIndex)) Some(r.getDouble(rowIndex)) else None
@@ -73,21 +80,21 @@ object Main {
 
     //basic bin example of live tiling. Change parameters based on these.
     val startTime: Long = System.currentTimeMillis
-    TileSeqRetriever(inputPath, lvlEightZoomTileReq, mercator, typicalBinSize, ((r: Row) => Some(1)), Some(MinMaxAggregator), CountAggregator)
+    TileSeqRetriever(sc, sqlContext, inputPath, lvlEightZoomTileReq, mercator, typicalBinSize, ((r: Row) => Some(1)), Some(MinMaxAggregator), CountAggregator)
     val endTime: Long = System.currentTimeMillis
     val runtime: Long = endTime - startTime
 
-    // //larger set of tiles
-    // val startTime2: Long = System.currentTimeMillis
-    // TileSeqRetriever(inputPath, largerLiveTileReq, basicMercatorProj, typicalBinSize, (r: Row) => Some(1), Some(MinMaxAggregator), CountAggregator)
-    // val endTime2: Long = System.currentTimeMillis
-    // val runtime2: Long = endTime - startTime
-    // //HEATMAP
-    //   //MercatorProjection
-    //   val startTime3: Long = System.currentTimeMillis
-    //   TileSeqRetriever(inputPath, lvlEightZoomTileReq, basicMercatorProj, typicalBinSize, valueExtractorHeatmap, Some(MinMaxAggregator), SumAggregator)
-    //   val endTime3: Long = System.currentTimeMillis
-    //   val runtime3: Long = endTime - startTime
+    //larger set of tiles
+    val startTime2: Long = System.currentTimeMillis
+    TileSeqRetriever(sc, sqlContext, inputPath, lvlEightZoomTileReq, mercator, typicalBinSize, (r: Row) => Some(1), Some(MinMaxAggregator), CountAggregator)
+    val endTime2: Long = System.currentTimeMillis
+    val runtime2: Long = endTime2 - startTime2
+    //HEATMAP
+      //MercatorProjection
+      val startTime3: Long = System.currentTimeMillis
+      TileSeqRetriever(sc, sqlContext, inputPath, lvlEightZoomTileReq, mercator, typicalBinSize, valueExtractorHeatmap, Some(MinMaxAggregator), SumAggregator)
+      val endTime3: Long = System.currentTimeMillis
+      val runtime3: Long = endTime3 - startTime3
     //
     //   //CartesianProjection
     //   val startTime4: Long = System.currentTimeMillis
@@ -102,11 +109,11 @@ object Main {
     //   val endTime5: Long = System.currentTimeMillis
     //   val runtime5: Long = endTime - startTime
     //
-    //   //MercatorProjcection
-    //   val startTime6: Long = System.currentTimeMillis
-    //   TileSeqRetriever(inputPath, lvlEightZoomTileReq, basicMercatorProj, wordCloudBinSize, valueExtractorTopics, None, topicLayerBinAggregator)
-    //   val endTime6: Long = System.currentTimeMillis
-    //   val runtime6: Long = endTime - startTime
+      //MercatorProjcection
+      // val startTime6: Long = System.currentTimeMillis
+      // TileSeqRetriever(inputPath, lvlEightZoomTileReq, basicMercatorProj, wordCloudBinSize, valueExtractorTopics, None, topicLayerBinAggregator)
+      // val endTime6: Long = System.currentTimeMillis
+      // val runtime6: Long = endTime6 - startTime6
     //
     // //WORDCLOUD
     //   //CartesianProjection
@@ -122,8 +129,8 @@ object Main {
     //   val runtime8: Long = endTime - startTime
 
       println(runtime)
-      // println(runtime2)
-      // println(runtime3)
+      println(runtime2)
+      println(runtime3)
       // println(runtime4)
       // println(runtime5)
       // println(runtime6)

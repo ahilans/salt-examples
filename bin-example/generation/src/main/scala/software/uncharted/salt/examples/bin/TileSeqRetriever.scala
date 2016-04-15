@@ -1,7 +1,6 @@
 package software.uncharted.salt.examples.bin
 //import sparkStuff
 import org.apache.spark.SparkContext
-import org.apache.spark.SparkConf
 import org.apache.spark.sql.SQLContext
 import org.apache.spark.sql.Row
 import org.apache.spark.sql.types.{StructField, StructType, StringType, DoubleType}
@@ -15,6 +14,10 @@ import software.uncharted.salt.core.generation.output.SeriesData
 import software.uncharted.salt.core.analytic.numeric._
 import software.uncharted.salt.core.analytic._
 
+//import text split
+//TODO: this needs to be added to dependency list.
+//import software.uncharted.sparkpipe.ops.core.dataframe.text.{split}
+
 import scala.collection.immutable
 
 object TileSeqRetriever {
@@ -22,6 +25,8 @@ object TileSeqRetriever {
   val tile_size = 256
   //APPARENTLY METHODS CAN HAVE THEIR OWN IMPLICIT PARAMETERS AS WELL.
   def apply[T,U,V,W,X](
+    sc: SparkContext,
+    sqlContext: SQLContext,
     datasetPath: String,
     tiles: Seq[(Int, Int, Int)],
     //projection: NumericProjection[(Double, Double), (Int, Int, Int), (Int, Int)],
@@ -58,13 +63,11 @@ object TileSeqRetriever {
     //set up spark definitions(since this is a driver application, it needs the sc and other spark driver stuff I think)
 
     //can this be pulled out or will every live tiling request have to set up a new instance of sparkContext?
-    val conf = new SparkConf().setAppName("salt-bin-example")
-    val sc = new SparkContext(conf)
-    val sqlContext = new SQLContext(sc)
+
 
     val indexedCols: immutable.IndexedSeq[StructField] = immutable.IndexedSeq(
     StructField("date", StringType),
-    StructField("userid", StringType),
+    StructField("userid", DoubleType),
     StructField("username", StringType),
     StructField("tweetid", StringType),
     StructField("tweet", StringType),
@@ -88,7 +91,9 @@ object TileSeqRetriever {
       .registerTempTable("taxi_micro")
 
       // filter rows we need
-      val input = sqlContext.sql("select lon, lat from taxi_micro")
+      val input = sqlContext.sql("select lon, lat, userid, tweet from taxi_micro")
+
+      val splitTweetTextDF = split("tweet")(input)
         .rdd.cache()
 
       //get min and max bounds of data for projection
