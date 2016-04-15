@@ -19,6 +19,22 @@ object Main {
       System.exit(-1)
     }
 
+    //try on single tiles, run multiple times on a single tile because the first few times on spark doesn't give you the long term timing capability?
+
+    //try to cache the data of jobs in a specific place.
+
+    //so:
+      //run different tiling layers..
+        //for each tiling layer, request a set of tiles one by one. (to match with ES)
+          //run each tile request multiple times in a row and see the result. see if the time changes
+        //Also note that Spark can request tiles in sequence (may be an advantage to ES)
+
+
+    //equivalent script uisng prism: request one tile coordinate using prism's library. NYC Twitter Data is already ingested into ES Cluster.
+      //I think prism uses redis?? probably not. Prism is a library. ES cluster probably does though. Need to double check.
+    
+    //then try running with sets of data.
+
     //pulled out to the main because a spark applciation cannot have multiple contexts.
     val conf = new SparkConf().setAppName("salt-bin-example")
     val sc = new SparkContext(conf)
