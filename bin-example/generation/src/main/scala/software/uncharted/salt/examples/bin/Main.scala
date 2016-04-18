@@ -5,11 +5,13 @@ import software.uncharted.salt.core.generation.request._
 import software.uncharted.salt.core.analytic.numeric._
 import software.uncharted.salt.core.analytic.collection._
 
+import scala.collection.immutable
 //import spark stuff
 import org.apache.spark.SparkContext
 import org.apache.spark.SparkConf
 import org.apache.spark.sql.SQLContext
 import org.apache.spark.sql.Row
+import org.apache.spark.sql.types.{StructField, StructType, StringType, DoubleType}
 
 object Main {
   def main(args: Array[String]) = {
@@ -42,8 +44,47 @@ object Main {
 
     val inputPath = args(0)
 
-    val singleTileReq = Seq((0,0,0))
 
+
+    val initStartTimeA: Long = System.currentTimeMillis
+    val indexedCols: immutable.IndexedSeq[StructField] = immutable.IndexedSeq(
+    StructField("date", StringType),
+    StructField("userid", DoubleType),
+    StructField("username", StringType),
+    StructField("tweetid", StringType),
+    StructField("tweet", StringType),
+    StructField("hashtags", StringType),
+
+    StructField("lon", DoubleType),
+    StructField("lat", DoubleType),
+
+    StructField("country", StringType),
+    StructField("state", StringType),
+    StructField("city", StringType),
+    StructField("language", StringType))
+
+    val schema = StructType(indexedCols)
+
+    //upload input data file into spark.
+    sqlContext.read.format("com.databricks.spark.csv")
+      .option("delimiter" , "\t")
+      .schema(schema)
+      .load("hdfs://uscc0-master0.uncharted.software/xdata/data/SummerCamp2015/JulyData-processed/nyc_twitter_merged")//input data assumed to be in hdfs
+      .registerTempTable("taxi_micro")
+
+      // filter rows we need
+      val input = sqlContext.sql("select lon, lat, userid, tweet from taxi_micro")
+      .rdd.cache()
+
+    //create instance of tileRetriever for that specific data set
+    val nycTwitterDataTileRetriever = TileSeqRetriever(sc, sqlContext, input)
+    val initEndTimeA: Long = System.currentTimeMillis
+    val initRuntimeA: Long = initEndTimeA - initStartTimeA
+
+    //val partialFunc = TileRetriever2(sc, sqlContext, input)_
+
+    //test params
+    val singleTileReq = Seq((0,0,0))
     val mercator = "mercator"
     val cartesian = "cartesian"
     val typicalBinSize: Int = 256
@@ -52,32 +93,36 @@ object Main {
       //tihs is because after many calls caching is done possibly?
 
     val startTimeA: Long = System.currentTimeMillis
-    TileSeqRetriever(sc, sqlContext, inputPath, singleTileReq, mercator, typicalBinSize, ((r: Row) => Some(1)), Some(MinMaxAggregator), CountAggregator)
+    nycTwitterDataTileRetriever.requestTile(singleTileReq, mercator, typicalBinSize, ((r: Row) => Some(1)), Some(MinMaxAggregator), CountAggregator)
     val endTimeA: Long = System.currentTimeMillis
     val runtimeA: Long = endTimeA - startTimeA
 
     val startTimeB: Long = System.currentTimeMillis
-    TileSeqRetriever(sc, sqlContext, inputPath, singleTileReq, mercator, typicalBinSize, ((r: Row) => Some(1)), Some(MinMaxAggregator), CountAggregator)
+    nycTwitterDataTileRetriever.requestTile(singleTileReq, mercator, typicalBinSize, ((r: Row) => Some(1)), Some(MinMaxAggregator), CountAggregator)
     val endTimeB: Long = System.currentTimeMillis
     val runtimeB: Long = endTimeB - startTimeB
 
+    //(8,77,90),
+    //                               (8,76,90), (8,74,88), (8,75,89), (8,77,89), (8,74,92), (8,75,90), (8,76,92), (8,75,88), (8,74,89), (8,75,91), (8,72,88), (8,75,92),
+    //                               (8,74,90), (8,78,89), (8,72,89))
+    //
     val startTimeC: Long = System.currentTimeMillis
-    TileSeqRetriever(sc, sqlContext, inputPath, singleTileReq, mercator, typicalBinSize, ((r: Row) => Some(1)), Some(MinMaxAggregator), CountAggregator)
+    nycTwitterDataTileRetriever.requestTile(Seq((8,77,90)), mercator, typicalBinSize, ((r: Row) => Some(1)), Some(MinMaxAggregator), CountAggregator)
     val endTimeC: Long = System.currentTimeMillis
     val runtimeC: Long = endTimeC - startTimeC
-
+    //
     val startTimeD: Long = System.currentTimeMillis
-    TileSeqRetriever(sc, sqlContext, inputPath, singleTileReq, mercator, typicalBinSize, ((r: Row) => Some(1)), Some(MinMaxAggregator), CountAggregator)
+    nycTwitterDataTileRetriever.requestTile(Seq((8,76,90)), mercator, typicalBinSize, ((r: Row) => Some(1)), Some(MinMaxAggregator), CountAggregator)
     val endTimeD: Long = System.currentTimeMillis
     val runtimeD: Long = endTimeD - startTimeD
-
+    //
     val startTimeE: Long = System.currentTimeMillis
-    TileSeqRetriever(sc, sqlContext, inputPath, singleTileReq, mercator, typicalBinSize, ((r: Row) => Some(1)), Some(MinMaxAggregator), CountAggregator)
+    nycTwitterDataTileRetriever.requestTile(Seq((8,74,88)), mercator, typicalBinSize, ((r: Row) => Some(1)), Some(MinMaxAggregator), CountAggregator)
     val endTimeE: Long = System.currentTimeMillis
     val runtimeE: Long = endTimeE - startTimeE
-
+    //
     val startTimeF: Long = System.currentTimeMillis
-    TileSeqRetriever(sc, sqlContext, inputPath, singleTileReq, mercator, typicalBinSize, ((r: Row) => Some(1)), Some(MinMaxAggregator), CountAggregator)
+    nycTwitterDataTileRetriever.requestTile(Seq((8,75,89)), mercator, typicalBinSize, ((r: Row) => Some(1)), Some(MinMaxAggregator), CountAggregator)
     val endTimeF: Long = System.currentTimeMillis
     val runtimeF: Long = endTimeF - startTimeF
 
@@ -86,106 +131,107 @@ object Main {
     // //run it for different tiles, still requesting one at a time though
     //   //repeat processing same tiles a couple times to see if run time decreases.
 
-    val startTimeG: Long = System.currentTimeMillis
-    TileSeqRetriever(sc, sqlContext, inputPath, Seq((1,0,0)), mercator, typicalBinSize, ((r: Row) => Some(1)), Some(MinMaxAggregator), CountAggregator)
-    val endTimeG: Long = System.currentTimeMillis
-    val runtimeG: Long = endTimeG - startTimeG
+    // val startTimeG: Long = System.currentTimeMillis
+    // TileSeqRetriever(sc, sqlContext, inputPath, Seq((1,0,0)), mercator, typicalBinSize, ((r: Row) => Some(1)), Some(MinMaxAggregator), CountAggregator)
+    // val endTimeG: Long = System.currentTimeMillis
+    // val runtimeG: Long = endTimeG - startTimeG
+    //
+    // val startTimeH: Long = System.currentTimeMillis
+    // TileSeqRetriever(sc, sqlContext, inputPath, Seq((1,0,1)), mercator, typicalBinSize, ((r: Row) => Some(1)), Some(MinMaxAggregator), CountAggregator)
+    // val endTimeH: Long = System.currentTimeMillis
+    // val runtimeH: Long = endTimeH - startTimeH
+    //
+    // val startTimeI: Long = System.currentTimeMillis
+    // TileSeqRetriever(sc, sqlContext, inputPath, Seq((1,1,0)), mercator, typicalBinSize, ((r: Row) => Some(1)), Some(MinMaxAggregator), CountAggregator)
+    // val endTimeI: Long = System.currentTimeMillis
+    // val runtimeI: Long = endTimeI - startTimeI
+    //
+    // val startTimeJ: Long = System.currentTimeMillis
+    // TileSeqRetriever(sc, sqlContext, inputPath, Seq((1,1,1)), mercator, typicalBinSize, ((r: Row) => Some(1)), Some(MinMaxAggregator), CountAggregator)
+    // val endTimeJ: Long = System.currentTimeMillis
+    // val runtimeJ: Long = endTimeJ - startTimeJ
+    //
+    // val startTimeK: Long = System.currentTimeMillis
+    // TileSeqRetriever(sc, sqlContext, inputPath, Seq((1,0,0)), mercator, typicalBinSize, ((r: Row) => Some(1)), Some(MinMaxAggregator), CountAggregator)
+    // val endTimeK: Long = System.currentTimeMillis
+    // val runtimeK: Long = endTimeK - startTimeK
+    //
+    // val startTimeL: Long = System.currentTimeMillis
+    // TileSeqRetriever(sc, sqlContext, inputPath, Seq((1,0,1)), mercator, typicalBinSize, ((r: Row) => Some(1)), Some(MinMaxAggregator), CountAggregator)
+    // val endTimeL: Long = System.currentTimeMillis
+    // val runtimeL: Long = endTimeL - startTimeL
+    //
+    // val startTimeM: Long = System.currentTimeMillis
+    // TileSeqRetriever(sc, sqlContext, inputPath, Seq((1,1,0)), mercator, typicalBinSize, ((r: Row) => Some(1)), Some(MinMaxAggregator), CountAggregator)
+    // val endTimeM: Long = System.currentTimeMillis
+    // val runtimeM: Long = endTimeM - startTimeM
+    //
+    // val startTimeN: Long = System.currentTimeMillis
+    // TileSeqRetriever(sc, sqlContext, inputPath, Seq((1,1,1)), mercator, typicalBinSize, ((r: Row) => Some(1)), Some(MinMaxAggregator), CountAggregator)
+    // val endTimeN: Long = System.currentTimeMillis
+    // val runtimeN: Long = endTimeN - startTimeN
+    //
+    // val startTimeO: Long = System.currentTimeMillis
+    // TileSeqRetriever(sc, sqlContext, inputPath, Seq((1,0,0)), mercator, typicalBinSize, ((r: Row) => Some(1)), Some(MinMaxAggregator), CountAggregator)
+    // val endTimeO: Long = System.currentTimeMillis
+    // val runtimeO: Long = endTimeO - startTimeO
+    //
+    // val startTimeP: Long = System.currentTimeMillis
+    // TileSeqRetriever(sc, sqlContext, inputPath, Seq((1,0,1)), mercator, typicalBinSize, ((r: Row) => Some(1)), Some(MinMaxAggregator), CountAggregator)
+    // val endTimeP: Long = System.currentTimeMillis
+    // val runtimeP: Long = endTimeP - startTimeP
+    //
+    // val startTimeQ: Long = System.currentTimeMillis
+    // TileSeqRetriever(sc, sqlContext, inputPath, Seq((1,1,0)), mercator, typicalBinSize, ((r: Row) => Some(1)), Some(MinMaxAggregator), CountAggregator)
+    // val endTimeQ: Long = System.currentTimeMillis
+    // val runtimeQ: Long = endTimeQ - startTimeQ
+    //
+    // val startTimeR: Long = System.currentTimeMillis
+    // TileSeqRetriever(sc, sqlContext, inputPath, Seq((1,1,1)), mercator, typicalBinSize, ((r: Row) => Some(1)), Some(MinMaxAggregator), CountAggregator)
+    // val endTimeR: Long = System.currentTimeMillis
+    // val runtimeR: Long = endTimeR - startTimeR
+    //
+    // val startTimeS: Long = System.currentTimeMillis
+    // TileSeqRetriever(sc, sqlContext, inputPath, Seq((1,0,0)), mercator, typicalBinSize, ((r: Row) => Some(1)), Some(MinMaxAggregator), CountAggregator)
+    // val endTimeS: Long = System.currentTimeMillis
+    // val runtimeS: Long = endTimeS - startTimeS
+    //
+    // val startTimeT: Long = System.currentTimeMillis
+    // TileSeqRetriever(sc, sqlContext, inputPath, Seq((1,0,1)), mercator, typicalBinSize, ((r: Row) => Some(1)), Some(MinMaxAggregator), CountAggregator)
+    // val endTimeT: Long = System.currentTimeMillis
+    // val runtimeT: Long = endTimeT - startTimeT
+    //
+    // val startTimeU: Long = System.currentTimeMillis
+    // TileSeqRetriever(sc, sqlContext, inputPath, Seq((1,1,0)), mercator, typicalBinSize, ((r: Row) => Some(1)), Some(MinMaxAggregator), CountAggregator)
+    // val endTimeU: Long = System.currentTimeMillis
+    // val runtimeU: Long = endTimeU - startTimeU
+    //
+    // val startTimeV: Long = System.currentTimeMillis
+    // TileSeqRetriever(sc, sqlContext, inputPath, Seq((1,1,1)), mercator, typicalBinSize, ((r: Row) => Some(1)), Some(MinMaxAggregator), CountAggregator)
+    // val endTimeV: Long = System.currentTimeMillis
+    // val runtimeV: Long = endTimeV - startTimeV
+    //
+    // val startTimeW: Long = System.currentTimeMillis
+    // TileSeqRetriever(sc, sqlContext, inputPath, Seq((1,0,0)), mercator, typicalBinSize, ((r: Row) => Some(1)), Some(MinMaxAggregator), CountAggregator)
+    // val endTimeW: Long = System.currentTimeMillis
+    // val runtimeW: Long = endTimeW - startTimeW
+    //
+    // val startTimeX: Long = System.currentTimeMillis
+    // TileSeqRetriever(sc, sqlContext, inputPath, Seq((1,0,1)), mercator, typicalBinSize, ((r: Row) => Some(1)), Some(MinMaxAggregator), CountAggregator)
+    // val endTimeX: Long = System.currentTimeMillis
+    // val runtimeX: Long = endTimeX - startTimeX
+    //
+    // val startTimeY: Long = System.currentTimeMillis
+    // TileSeqRetriever(sc, sqlContext, inputPath, Seq((1,1,0)), mercator, typicalBinSize, ((r: Row) => Some(1)), Some(MinMaxAggregator), CountAggregator)
+    // val endTimeY: Long = System.currentTimeMillis
+    // val runtimeY: Long = endTimeY - startTimeY
+    //
+    // val startTimeZ: Long = System.currentTimeMillis
+    // TileSeqRetriever(sc, sqlContext, inputPath, Seq((1,1,1)), mercator, typicalBinSize, ((r: Row) => Some(1)), Some(MinMaxAggregator), CountAggregator)
+    // val endTimeZ: Long = System.currentTimeMillis
+    // val runtimeZ: Long = endTimeZ - startTimeZ
 
-    val startTimeH: Long = System.currentTimeMillis
-    TileSeqRetriever(sc, sqlContext, inputPath, Seq((1,0,1)), mercator, typicalBinSize, ((r: Row) => Some(1)), Some(MinMaxAggregator), CountAggregator)
-    val endTimeH: Long = System.currentTimeMillis
-    val runtimeH: Long = endTimeH - startTimeH
-
-    val startTimeI: Long = System.currentTimeMillis
-    TileSeqRetriever(sc, sqlContext, inputPath, Seq((1,1,0)), mercator, typicalBinSize, ((r: Row) => Some(1)), Some(MinMaxAggregator), CountAggregator)
-    val endTimeI: Long = System.currentTimeMillis
-    val runtimeI: Long = endTimeI - startTimeI
-
-    val startTimeJ: Long = System.currentTimeMillis
-    TileSeqRetriever(sc, sqlContext, inputPath, Seq((1,1,1)), mercator, typicalBinSize, ((r: Row) => Some(1)), Some(MinMaxAggregator), CountAggregator)
-    val endTimeJ: Long = System.currentTimeMillis
-    val runtimeJ: Long = endTimeJ - startTimeJ
-
-    val startTimeK: Long = System.currentTimeMillis
-    TileSeqRetriever(sc, sqlContext, inputPath, Seq((1,0,0)), mercator, typicalBinSize, ((r: Row) => Some(1)), Some(MinMaxAggregator), CountAggregator)
-    val endTimeK: Long = System.currentTimeMillis
-    val runtimeK: Long = endTimeK - startTimeK
-
-    val startTimeL: Long = System.currentTimeMillis
-    TileSeqRetriever(sc, sqlContext, inputPath, Seq((1,0,1)), mercator, typicalBinSize, ((r: Row) => Some(1)), Some(MinMaxAggregator), CountAggregator)
-    val endTimeL: Long = System.currentTimeMillis
-    val runtimeL: Long = endTimeL - startTimeL
-
-    val startTimeM: Long = System.currentTimeMillis
-    TileSeqRetriever(sc, sqlContext, inputPath, Seq((1,1,0)), mercator, typicalBinSize, ((r: Row) => Some(1)), Some(MinMaxAggregator), CountAggregator)
-    val endTimeM: Long = System.currentTimeMillis
-    val runtimeM: Long = endTimeM - startTimeM
-
-    val startTimeN: Long = System.currentTimeMillis
-    TileSeqRetriever(sc, sqlContext, inputPath, Seq((1,1,1)), mercator, typicalBinSize, ((r: Row) => Some(1)), Some(MinMaxAggregator), CountAggregator)
-    val endTimeN: Long = System.currentTimeMillis
-    val runtimeN: Long = endTimeN - startTimeN
-
-    val startTimeO: Long = System.currentTimeMillis
-    TileSeqRetriever(sc, sqlContext, inputPath, Seq((1,0,0)), mercator, typicalBinSize, ((r: Row) => Some(1)), Some(MinMaxAggregator), CountAggregator)
-    val endTimeO: Long = System.currentTimeMillis
-    val runtimeO: Long = endTimeO - startTimeO
-
-    val startTimeP: Long = System.currentTimeMillis
-    TileSeqRetriever(sc, sqlContext, inputPath, Seq((1,0,1)), mercator, typicalBinSize, ((r: Row) => Some(1)), Some(MinMaxAggregator), CountAggregator)
-    val endTimeP: Long = System.currentTimeMillis
-    val runtimeP: Long = endTimeP - startTimeP
-
-    val startTimeQ: Long = System.currentTimeMillis
-    TileSeqRetriever(sc, sqlContext, inputPath, Seq((1,1,0)), mercator, typicalBinSize, ((r: Row) => Some(1)), Some(MinMaxAggregator), CountAggregator)
-    val endTimeQ: Long = System.currentTimeMillis
-    val runtimeQ: Long = endTimeQ - startTimeQ
-
-    val startTimeR: Long = System.currentTimeMillis
-    TileSeqRetriever(sc, sqlContext, inputPath, Seq((1,1,1)), mercator, typicalBinSize, ((r: Row) => Some(1)), Some(MinMaxAggregator), CountAggregator)
-    val endTimeR: Long = System.currentTimeMillis
-    val runtimeR: Long = endTimeR - startTimeR
-
-    val startTimeS: Long = System.currentTimeMillis
-    TileSeqRetriever(sc, sqlContext, inputPath, Seq((1,0,0)), mercator, typicalBinSize, ((r: Row) => Some(1)), Some(MinMaxAggregator), CountAggregator)
-    val endTimeS: Long = System.currentTimeMillis
-    val runtimeS: Long = endTimeS - startTimeS
-
-    val startTimeT: Long = System.currentTimeMillis
-    TileSeqRetriever(sc, sqlContext, inputPath, Seq((1,0,1)), mercator, typicalBinSize, ((r: Row) => Some(1)), Some(MinMaxAggregator), CountAggregator)
-    val endTimeT: Long = System.currentTimeMillis
-    val runtimeT: Long = endTimeT - startTimeT
-
-    val startTimeU: Long = System.currentTimeMillis
-    TileSeqRetriever(sc, sqlContext, inputPath, Seq((1,1,0)), mercator, typicalBinSize, ((r: Row) => Some(1)), Some(MinMaxAggregator), CountAggregator)
-    val endTimeU: Long = System.currentTimeMillis
-    val runtimeU: Long = endTimeU - startTimeU
-
-    val startTimeV: Long = System.currentTimeMillis
-    TileSeqRetriever(sc, sqlContext, inputPath, Seq((1,1,1)), mercator, typicalBinSize, ((r: Row) => Some(1)), Some(MinMaxAggregator), CountAggregator)
-    val endTimeV: Long = System.currentTimeMillis
-    val runtimeV: Long = endTimeV - startTimeV
-
-    val startTimeW: Long = System.currentTimeMillis
-    TileSeqRetriever(sc, sqlContext, inputPath, Seq((1,0,0)), mercator, typicalBinSize, ((r: Row) => Some(1)), Some(MinMaxAggregator), CountAggregator)
-    val endTimeW: Long = System.currentTimeMillis
-    val runtimeW: Long = endTimeW - startTimeW
-
-    val startTimeX: Long = System.currentTimeMillis
-    TileSeqRetriever(sc, sqlContext, inputPath, Seq((1,0,1)), mercator, typicalBinSize, ((r: Row) => Some(1)), Some(MinMaxAggregator), CountAggregator)
-    val endTimeX: Long = System.currentTimeMillis
-    val runtimeX: Long = endTimeX - startTimeX
-
-    val startTimeY: Long = System.currentTimeMillis
-    TileSeqRetriever(sc, sqlContext, inputPath, Seq((1,1,0)), mercator, typicalBinSize, ((r: Row) => Some(1)), Some(MinMaxAggregator), CountAggregator)
-    val endTimeY: Long = System.currentTimeMillis
-    val runtimeY: Long = endTimeY - startTimeY
-
-    val startTimeZ: Long = System.currentTimeMillis
-    TileSeqRetriever(sc, sqlContext, inputPath, Seq((1,1,1)), mercator, typicalBinSize, ((r: Row) => Some(1)), Some(MinMaxAggregator), CountAggregator)
-    val endTimeZ: Long = System.currentTimeMillis
-    val runtimeZ: Long = endTimeZ - startTimeZ
-
+    println(initRuntimeA)
     println(runtimeA)
     println(runtimeB)
     println(runtimeC)
@@ -193,28 +239,28 @@ object Main {
     println(runtimeE)
     println(runtimeF)
 
-    println(runtimeG)
-    println(runtimeH)
-    println(runtimeI)
-    println(runtimeJ)
-    println(runtimeK)
-    println(runtimeL)
-
-    println(runtimeM)
-    println(runtimeN)
-    println(runtimeO)
-    println(runtimeP)
-    println(runtimeQ)
-    println(runtimeR)
-
-    println(runtimeS)
-    println(runtimeT)
-    println(runtimeU)
-    println(runtimeV)
-    println(runtimeW)
-    println(runtimeX)
-    println(runtimeY)
-    println(runtimeZ)
+    // println(runtimeG)
+    // println(runtimeH)
+    // println(runtimeI)
+    // println(runtimeJ)
+    // println(runtimeK)
+    // println(runtimeL)
+    //
+    // println(runtimeM)
+    // println(runtimeN)
+    // println(runtimeO)
+    // println(runtimeP)
+    // println(runtimeQ)
+    // println(runtimeR)
+    //
+    // println(runtimeS)
+    // println(runtimeT)
+    // println(runtimeU)
+    // println(runtimeV)
+    // println(runtimeW)
+    // println(runtimeX)
+    // println(runtimeY)
+    // println(runtimeZ)
 
 
     //
