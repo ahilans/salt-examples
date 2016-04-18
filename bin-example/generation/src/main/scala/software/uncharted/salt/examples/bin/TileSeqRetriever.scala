@@ -5,6 +5,10 @@ import org.apache.spark.sql.SQLContext
 import org.apache.spark.sql.Row
 import org.apache.spark.sql.types.{StructField, StructType, StringType, DoubleType}
 
+import org.apache.spark.rdd.RDD
+
+
+
 //import salt stuff
 import software.uncharted.salt.core.projection.numeric._
 import software.uncharted.salt.core.generation.request._
@@ -34,7 +38,7 @@ object TileSeqRetriever {
     binSize: Int,
     valueExtractor: (Row) => Option[T],
     tileAggregator: Option[Aggregator[V,W,X]],
-    binAggregator: Aggregator[T,U,V]): TraversableOnce[((Int, Int, Int))] = {
+    binAggregator: Aggregator[T,U,V]): RDD[(Int, Int, Int)] = {
     //for live tiling:
 
       //pass in the input data file you will be generating the tiles from
@@ -143,7 +147,7 @@ object TileSeqRetriever {
           // Return tuples of tile coordinate, byte array
           (tile.coords)
         })
-        .collect() //collects tuples from each executor, combines and returns to driver?
+        //.collect() //collects tuples from each executor, combines and returns to driver?
 
       //now that we have tuples of tile data for every tile, we just return that to the caller
 
