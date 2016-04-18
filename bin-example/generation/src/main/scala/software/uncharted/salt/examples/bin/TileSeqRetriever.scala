@@ -92,9 +92,9 @@ object TileSeqRetriever {
 
       // filter rows we need
       val input = sqlContext.sql("select lon, lat, userid, tweet from taxi_micro")
+      .rdd.cache()
 
-      val splitTweetTextDF = split("tweet")(input)
-        .rdd.cache()
+      //val splitTweetTextDF = split("tweet")(input)
 
       //get min and max bounds of data for projection
       val maxBounds = sqlContext.sql("select lon, lat from taxi_micro").agg("lon" -> "max", "lat" -> "max").collect()
