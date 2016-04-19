@@ -23,6 +23,20 @@ import software.uncharted.salt.core.analytic._
 
 import scala.collection.immutable
 
+
+//S3 Client Stuff
+import java.io.{ByteArrayOutputStream, ByteArrayInputStream, InputStream}
+import java.util.zip.{GZIPOutputStream, GZIPInputStream}
+
+import com.amazonaws.auth.BasicAWSCredentials
+import com.amazonaws.services.s3.AmazonS3Client
+import com.amazonaws.services.s3.model.{PutObjectRequest, CannedAccessControlList, ObjectMetadata}
+
+//need to add aws to gradle
+
+
+
+
 // object TileRetriever2 {
 //   def apply[T,U,V,W,X](sc: SparkContext, sqlContext: SQLContext, input: RDD[Row])(tiles: Seq[(Int, Int, Int)],
 //   projection: String,
@@ -81,6 +95,18 @@ import scala.collection.immutable
 //   }
 // }
 
+//ask mike for the cpus size of each node (ES)
+//count()
+//S3
+//get cluster size for ES to create equivalent set of workers executors
+//ES cannot scale up. Once you have an index with set config that's what you get
+//Spark can scale up. Speed Incerase
+//ES handles requests Serially? Only request tiles one at a itme
+//Spark can request multiple tiles
+
+//Kevin has code that generates tiles
+
+
 object TileSeqRetriever {
   def apply(sc: SparkContext, sqlContext: SQLContext, input: RDD[Row]) = {
     //load input into spark
@@ -100,8 +126,8 @@ class TileSeqRetriever(sc: SparkContext, sqlContext: SQLContext, input: RDD[Row]
     projection: String,
     binSize: Int,
     valueExtractor: (Row) => Option[T],
-    tileAggregator: Option[Aggregator[V,W,X]],
-    binAggregator: Aggregator[T,U,V]): RDD[(Int, Int, Int)] = {
+    tileAggregator: Option[Aggregator[Double,W,(Double, Double)]],
+    binAggregator: Aggregator[T,U,Double]): RDD[((Int, Int, Int), Seq[Byte])] = {
 
 
       //get min and max bounds of data for projection
@@ -136,14 +162,37 @@ class TileSeqRetriever(sc: SparkContext, sqlContext: SQLContext, input: RDD[Row]
 
       val request = new TileSeqRequest(tiles)
 
-      val rdd = gen.generate(input, pickups, request) //RETURNS RDD[TILE[TC]]
+      val rdd: RDD[SeriesData[(Int, Int, Int), (Int, Int), Double, (Double, Double)]] = gen.generate(input, pickups, request).map(s => pickups(s).get) //returns SeriesData[TC,BC,V,X]
 
       val output = rdd
-        .map(s => pickups(s).get) //returns SeriesData[TC,BC,V,X]
-        .map(tile => {
-
-          (tile.coords)
+        .filter(t => t.bins.density() > 0)
+        .map({ tile =>
+          val data = for (bin <- tile.bins; i <- 0 until 8) yield {
+            val data = java.lang.Double.doubleToLongBits(bin)
+            ((data >> (i * 8)) & 0xff).asInstanceOf[Byte]
+          }
+          (tile.coords, data.toSeq) //because tile.bins is a TraversableOnce, so convert to Seq to match rest of code (currently uses Seq)
         })
+
+        output.foreachPartition { tileDataIter =>
+          val s3Client = new AmazonS3Client(new BasicAWSCredentials("AKIAIRJE3R57Z2PRC5CA", "vbcT/1yDD10YofItNnMcOIQprGPgyGYJNuW02uYM"))
+          tileDataIter { tileData =>
+            val coord = tileData._1
+            // store tile in bucket as layerName/level-xIdx-yIdx.bin
+            val key = s"testData/${coord._1}/${coord._2}/${coord._3}.bin"
+
+            val is = new ByteArrayInputStream(tileData._2.toArray)
+            val meta = new ObjectMetadata()
+
+            meta.setContentType("application/octet-stream")
+            s3Client.putObject(new PutObjectRequest("spark-live-tile-benchmark-test", key, is, meta) // scalastyle:ignore
+            .withCannedAcl(CannedAccessControlList.PublicRead))
+          }
+        }
+
+      //import xdata-pipeline-ops jar and import S3 client LATER.
+
+
 
       output
   }
