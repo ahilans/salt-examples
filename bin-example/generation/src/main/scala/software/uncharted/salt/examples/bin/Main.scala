@@ -12,6 +12,7 @@ import org.apache.spark.SparkConf
 import org.apache.spark.sql.SQLContext
 import org.apache.spark.sql.Row
 import org.apache.spark.sql.types.{StructField, StructType, StringType, DoubleType}
+import redis.clients.jedis.Jedis
 
 object Main {
   def main(args: Array[String]) = {
@@ -66,25 +67,28 @@ object Main {
     val schema = StructType(indexedCols)
 
     //upload input data file into spark.
-    sqlContext.read.format("com.databricks.spark.csv")
+    val df = sqlContext.read.format("com.databricks.spark.csv")
       .option("delimiter" , "\t")
       .schema(schema)
-      .load("hdfs://uscc0-master0.uncharted.software/xdata/data/SummerCamp2015/JulyData-processed/nyc_twitter_merged")//input data assumed to be in hdfs
-      .registerTempTable("taxi_micro")
+      .load(s"hdfs://$inputPath")//input data assumed to be in hdfs //"hdfs://uscc0-master0.uncharted.software/xdata/data/SummerCamp2015/JulyData-processed/nyc_twitter_merged"
+      .select("lon", "lat")
+      .cache
+      // .registerTempTable("taxi_micro")
 
-      // filter rows we need
-      val input = sqlContext.sql("select lon, lat, userid, tweet from taxi_micro")
-      .rdd.cache()
+    // filter rows we need
+    // val input = sqlContext.sql("select lon, lat, userid, tweet from taxi_micro")
+    // .rdd.cache()
 
     //create instance of tileRetriever for that specific data set
-    val nycTwitterDataTileRetriever = TileSeqRetriever(sc, sqlContext, input)
+    val nycTwitterDataTileRetriever = TileSeqRetriever(sc, sqlContext, df)
     val initEndTimeA: Long = System.currentTimeMillis
     val initRuntimeA: Long = initEndTimeA - initStartTimeA
 
     //val partialFunc = TileRetriever2(sc, sqlContext, input)_
 
     //test params
-    val singleTileReq = Seq((8,75,88))
+    val singleTileReq = Seq((0,0,0))
+    val multipleTileReq = Seq((8,77,90),(8,76,90),(8,74,88),(8,75,89),(8,77,89),(8,74,92),(8,75,90),(8,76,92),(8,75,88),(8,74,89),(8,75,91),(8,72,88),(8,75,92),(8,74,90),(8,78,89),(8,72,89))
     val mercator = "mercator"
     val cartesian = "cartesian"
     val typicalBinSize: Int = 256
@@ -92,142 +96,97 @@ object Main {
     //run same tile req multiple tmie to see average time to pull from spark
       //tihs is because after many calls caching is done possibly?
 
-    val startTimeA: Long = System.currentTimeMillis
-    nycTwitterDataTileRetriever.requestTile(singleTileReq, mercator, typicalBinSize, ((r: Row) => Some(1)), Some(MinMaxAggregator), CountAggregator)
-    val endTimeA: Long = System.currentTimeMillis
-    val runtimeA: Long = endTimeA - startTimeA
-
+    // val startTimeA: Long = System.currentTimeMillis
+    // nycTwitterDataTileRetriever.requestTile(singleTileReq, mercator, typicalBinSize, ((r: Row) => Some(1)), Some(MinMaxAggregator), CountAggregator)
+    // val endTimeA: Long = System.currentTimeMillis
+    // val runtimeA: Long = endTimeA - startTimeA
+    //
     // val startTimeB: Long = System.currentTimeMillis
     // nycTwitterDataTileRetriever.requestTile(singleTileReq, mercator, typicalBinSize, ((r: Row) => Some(1)), Some(MinMaxAggregator), CountAggregator)
     // val endTimeB: Long = System.currentTimeMillis
     // val runtimeB: Long = endTimeB - startTimeB
     //
-    // val startTime3: Long = System.currentTimeMillis
+    // val startTimeC: Long = System.currentTimeMillis
     // nycTwitterDataTileRetriever.requestTile(singleTileReq, mercator, typicalBinSize, ((r: Row) => Some(1)), Some(MinMaxAggregator), CountAggregator)
-    // val endTime3: Long = System.currentTimeMillis
-    // val runtime3: Long = endTime3 - startTime3
+    // val endTimeC: Long = System.currentTimeMillis
+    // val runtimeC: Long = endTimeC - startTimeC
     //
-    // val startTime4: Long = System.currentTimeMillis
+    // val startTimeD: Long = System.currentTimeMillis
     // nycTwitterDataTileRetriever.requestTile(singleTileReq, mercator, typicalBinSize, ((r: Row) => Some(1)), Some(MinMaxAggregator), CountAggregator)
-    // val endTime4: Long = System.currentTimeMillis
-    // val runtime4: Long = endTime4 - startTime4
-    //
-    // val startTime5: Long = System.currentTimeMillis
-    // nycTwitterDataTileRetriever.requestTile(singleTileReq, mercator, typicalBinSize, ((r: Row) => Some(1)), Some(MinMaxAggregator), CountAggregator)
-    // val endTime5: Long = System.currentTimeMillis
-    // val runtime5: Long = endTime5 - startTime5
-    //
-    // val startTime6: Long = System.currentTimeMillis
-    // nycTwitterDataTileRetriever.requestTile(singleTileReq, mercator, typicalBinSize, ((r: Row) => Some(1)), Some(MinMaxAggregator), CountAggregator)
-    // val endTime6: Long = System.currentTimeMillis
-    // val runtime6: Long = endTime6 - startTime6
-    //
-    // val startTime7: Long = System.currentTimeMillis
-    // nycTwitterDataTileRetriever.requestTile(singleTileReq, mercator, typicalBinSize, ((r: Row) => Some(1)), Some(MinMaxAggregator), CountAggregator)
-    // val endTime7: Long = System.currentTimeMillis
-    // val runtime7: Long = endTime7 - startTime7
-    //
-    // val startTime8: Long = System.currentTimeMillis
-    // nycTwitterDataTileRetriever.requestTile(singleTileReq, mercator, typicalBinSize, ((r: Row) => Some(1)), Some(MinMaxAggregator), CountAggregator)
-    // val endTime8: Long = System.currentTimeMillis
-    // val runtime8: Long = endTime8 - startTime8
-    //
-    // val startTime9: Long = System.currentTimeMillis
-    // nycTwitterDataTileRetriever.requestTile(singleTileReq, mercator, typicalBinSize, ((r: Row) => Some(1)), Some(MinMaxAggregator), CountAggregator)
-    // val endTime9: Long = System.currentTimeMillis
-    // val runtime9: Long = endTime9 - startTime9
-    //
-    // val startTime10: Long = System.currentTimeMillis
-    // nycTwitterDataTileRetriever.requestTile(singleTileReq, mercator, typicalBinSize, ((r: Row) => Some(1)), Some(MinMaxAggregator), CountAggregator)
-    // val endTime10: Long = System.currentTimeMillis
-    // val runtime10: Long = endTime10 - startTime10
-    //
-    // val startTime11: Long = System.currentTimeMillis
-    // nycTwitterDataTileRetriever.requestTile(singleTileReq, mercator, typicalBinSize, ((r: Row) => Some(1)), Some(MinMaxAggregator), CountAggregator)
-    // val endTime11: Long = System.currentTimeMillis
-    // val runtime11: Long = endTime11 - startTime11
-    //
-    // val startTime12: Long = System.currentTimeMillis
-    // nycTwitterDataTileRetriever.requestTile(singleTileReq, mercator, typicalBinSize, ((r: Row) => Some(1)), Some(MinMaxAggregator), CountAggregator)
-    // val endTime12: Long = System.currentTimeMillis
-    // val runtime12: Long = endTime12 - startTime12
-    //
-    // val startTime13: Long = System.currentTimeMillis
-    // nycTwitterDataTileRetriever.requestTile(singleTileReq, mercator, typicalBinSize, ((r: Row) => Some(1)), Some(MinMaxAggregator), CountAggregator)
-    // val endTime13: Long = System.currentTimeMillis
-    // val runtime13: Long = endTime13 - startTime13
-    //
-    // val startTime14: Long = System.currentTimeMillis
-    // nycTwitterDataTileRetriever.requestTile(singleTileReq, mercator, typicalBinSize, ((r: Row) => Some(1)), Some(MinMaxAggregator), CountAggregator)
-    // val endTime14: Long = System.currentTimeMillis
-    // val runtime14: Long = endTime14 - startTime14
-    //
-    // val startTime15: Long = System.currentTimeMillis
-    // nycTwitterDataTileRetriever.requestTile(singleTileReq, mercator, typicalBinSize, ((r: Row) => Some(1)), Some(MinMaxAggregator), CountAggregator)
-    // val endTime15: Long = System.currentTimeMillis
-    // val runtime15: Long = endTime15 - startTime15
+    // val endTimeD: Long = System.currentTimeMillis
+    // val runtimeD: Long = endTimeD - startTimeD
 
-
-
-    //(8,77,90),
-    //                               (8,76,90), (8,74,88), (8,75,89), (8,77,89), (8,74,92), (8,75,90), (8,76,92), (8,75,88), (8,74,89), (8,75,91), (8,72,88), (8,75,92),
-    //                               (8,74,90), (8,78,89), (8,72,89))
-    //
-    val startTimeC: Long = System.currentTimeMillis
-    nycTwitterDataTileRetriever.requestTile(Seq((8,77,90)), mercator, typicalBinSize, ((r: Row) => Some(1)), Some(MinMaxAggregator), CountAggregator)
-    val endTimeC: Long = System.currentTimeMillis
-    val runtimeC: Long = endTimeC - startTimeC
-    //
-    val startTimeD: Long = System.currentTimeMillis
-    nycTwitterDataTileRetriever.requestTile(Seq((8,76,90)), mercator, typicalBinSize, ((r: Row) => Some(1)), Some(MinMaxAggregator), CountAggregator)
-    val endTimeD: Long = System.currentTimeMillis
-    val runtimeD: Long = endTimeD - startTimeD
-    //
     val startTimeE: Long = System.currentTimeMillis
-    nycTwitterDataTileRetriever.requestTile(Seq((8,74,88)), mercator, typicalBinSize, ((r: Row) => Some(1)), Some(MinMaxAggregator), CountAggregator)
+    nycTwitterDataTileRetriever.requestTile(Seq((12,1206,1542)), mercator, typicalBinSize, ((r: Row) => Some(1)), Some(MinMaxAggregator), CountAggregator)
     val endTimeE: Long = System.currentTimeMillis
     val runtimeE: Long = endTimeE - startTimeE
     //
-    val startTimeF: Long = System.currentTimeMillis
-    nycTwitterDataTileRetriever.requestTile(Seq((8,75,89)), mercator, typicalBinSize, ((r: Row) => Some(1)), Some(MinMaxAggregator), CountAggregator)
-    val endTimeF: Long = System.currentTimeMillis
-    val runtimeF: Long = endTimeF - startTimeF
+    // val startTimeF: Long = System.currentTimeMillis
+    // nycTwitterDataTileRetriever.requestTile(Seq((12,1207,1542)), mercator, typicalBinSize, ((r: Row) => Some(1)), Some(MinMaxAggregator), CountAggregator)
+    // val endTimeF: Long = System.currentTimeMillis
+    // val runtimeF: Long = endTimeF - startTimeF
+    //
+    // val startTimeG: Long = System.currentTimeMillis
+    // nycTwitterDataTileRetriever.requestTile(Seq((12,1208,1542)), mercator, typicalBinSize, ((r: Row) => Some(1)), Some(MinMaxAggregator), CountAggregator)
+    // val endTimeG: Long = System.currentTimeMillis
+    // val runtimeG: Long = endTimeG - startTimeG
+    //
+    // val startTimeH: Long = System.currentTimeMillis
+    // nycTwitterDataTileRetriever.requestTile(Seq((12,1205,1542)), mercator, typicalBinSize, ((r: Row) => Some(1)), Some(MinMaxAggregator), CountAggregator)
+    // val endTimeH: Long = System.currentTimeMillis
+    // val runtimeH: Long = endTimeH - startTimeH
+    //
+    // val startTimeI: Long = System.currentTimeMillis
+    // nycTwitterDataTileRetriever.requestTile(Seq((12,1204,1542)), mercator, typicalBinSize, ((r: Row) => Some(1)), Some(MinMaxAggregator), CountAggregator)
+    // val endTimeI: Long = System.currentTimeMillis
+    // val runtimeI: Long = endTimeI - startTimeI
+    //
+    // val startTimeJ: Long = System.currentTimeMillis
+    // nycTwitterDataTileRetriever.requestTile(Seq((12,1209,1542)), mercator, typicalBinSize, ((r: Row) => Some(1)), Some(MinMaxAggregator), CountAggregator)
+    // val endTimeJ: Long = System.currentTimeMillis
+    // val runtimeJ: Long = endTimeJ - startTimeJ
+    //
+    // val startTimeK: Long = System.currentTimeMillis
+    // nycTwitterDataTileRetriever.requestTile(Seq((13,2412,3079),(13,2413,3079),(13,2412,3080),(13,2413,3080),(13,2413,3078),(13,2411,3079),(13,2414,3079),(13,2411,3080),(13,2414,3080),(13,2411,3078),(13,2412,3081),(13,2414,3078),(13,2413,3081),(13,2413,3079),(13,2412,3077),(13,2413,3077)), mercator, typicalBinSize, ((r: Row) => Some(1)), Some(MinMaxAggregator), CountAggregator)
+    // val endTimeK: Long = System.currentTimeMillis
+    // val runtimeK: Long = endTimeK - startTimeK
 
+    val jedis = new Jedis("10.64.8.166", 6379)
+    val result = jedis.set("testyo2", "hereisavalue")
+    println(result)
 
-
-    // //run it for different tiles, still requesting one at a time though
-    //   //repeat processing same tiles a couple times to see if run time decreases.
-
-
-
-
+    //
+    // // //run it for different tiles, still requesting one at a time though
+    // //   //repeat processing same tiles a couple times to see if run time decreases.
+    //
+    //
+    //
+    //
     println("=====================================================================")
     println("Time to load data into spark. This is the version where it's supposed to upload to s3")
     println(initRuntimeA)
     println("=====================================================================")
-    println("Times for runnning the same tiling job 15 times")
-    println(runtimeA)
-    // println(runtimeB)
-    // println(runtime3)
-    // println(runtime4)
-    // println(runtime5)
-    // println(runtime6)
-    // println(runtime7)
-    // println(runtime8)
-    // println(runtime9)
-    // println(runtime10)
-    // println(runtime11)
-    // println(runtime12)
-    // println(runtime13)
-    // println(runtime14)
-    // println(runtime15)
-    println("=====================================================================")
-    println("Times for runnning 4 different tiling jobs")
-    println(runtimeC)
-    println(runtimeD)
+    println("Time to run job first time")
     println(runtimeE)
-    println(runtimeF)
+    println("Time to run job 3 times")
+    // println(runtimeB)
+    // println(runtimeC)
+    // println(runtimeD)
+
     println("=====================================================================")
+    println("Times for runnning LOWER LEVEL TILE REQUESTS")
+    println("=====================================================================")
+    // println(runtimeE)
+    // println(runtimeF)
+    // println(runtimeG)
+    // println(runtimeH)
+    // println(runtimeI)
+    // println(runtimeJ)
+
+    println("=====================================================================")
+    println("Times for runnning SEQUENCE OF TILES")
+    println("=====================================================================")
+    //println(runtimeK)
 
     //
     // //you can also try it for different tiling jobs

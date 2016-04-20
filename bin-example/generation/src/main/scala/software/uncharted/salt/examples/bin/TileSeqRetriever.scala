@@ -5,6 +5,9 @@ import org.apache.spark.sql.SQLContext
 import org.apache.spark.sql.Row
 
 import org.apache.spark.rdd.RDD
+import org.apache.spark.sql.DataFrame
+
+import redis.clients.jedis.Jedis
 
 
 
@@ -104,19 +107,22 @@ import com.amazonaws.services.s3.model.{PutObjectRequest, CannedAccessControlLis
 //ES handles requests Serially? Only request tiles one at a itme
 //Spark can request multiple tiles
 
+//ES: 8 machines,  8 cores, 64 G ram
+
 //Kevin has code that generates tiles
 
 
 object TileSeqRetriever {
-  def apply(sc: SparkContext, sqlContext: SQLContext, input: RDD[Row]) = {
+  def apply(sc: SparkContext, sqlContext: SQLContext, input: DataFrame) = {
     //load input into spark
-    val maxBounds = sqlContext.sql("select lon, lat from taxi_micro").agg("lon" -> "max", "lat" -> "max").collect()
-    val minBounds = sqlContext.sql("select lon, lat from taxi_micro").agg("lon" -> "min", "lat" -> "min").collect()
-    new TileSeqRetriever(sc, sqlContext, input, maxBounds, minBounds)
+    // val maxBounds = sqlContext.sql("select lon, lat from taxi_micro").agg("lon" -> "max", "lat" -> "max").collect()
+    // val minBounds = sqlContext.sql("select lon, lat from taxi_micro").agg("lon" -> "min", "lat" -> "min").collect()
+    val bounds = input.selectExpr("max(lon)", "min(lon)", "max(lat)", "min(lat)").collect()(0)
+    new TileSeqRetriever(sc, sqlContext, input.rdd, bounds)
   }
 }
 
-class TileSeqRetriever(sc: SparkContext, sqlContext: SQLContext, input: RDD[Row], minBounds: Array[Row], maxBounds: Array[Row]) {
+class TileSeqRetriever(sc: SparkContext, sqlContext: SQLContext, input: RDD[Row], bounds: Row) {
   //set up default tile size. tile size gives you the number of bins along a dimension.
   val tile_size = 256
   //APPARENTLY METHODS CAN HAVE THEIR OWN IMPLICIT PARAMETERS AS WELL.
@@ -135,8 +141,8 @@ class TileSeqRetriever(sc: SparkContext, sqlContext: SQLContext, input: RDD[Row]
 
       //get projection based on projection type specified
       val projection_object: NumericProjection[(Double, Double), (Int, Int, Int), (Int, Int)] = projection match {
-        case "mercator" => new MercatorProjection(Seq(0,1,2,3,4,5,6,7,8,9,10,11,12,13), (minBounds(0).getDouble(1), minBounds(0).getDouble(0)), (maxBounds(0).getDouble(1), maxBounds(0).getDouble(0)))
-        case "cartesian" => new CartesianProjection(Seq(0,1,2,3,4,5,6,7,8,9,10,11,12,13), (minBounds(0).getDouble(1), minBounds(0).getDouble(0)), (maxBounds(0).getDouble(1), maxBounds(0).getDouble(0)))
+        case "mercator" => new MercatorProjection(Seq(0,12,13))
+        case "cartesian" => new CartesianProjection(Seq(0,12,13), (bounds.getDouble(3), bounds.getDouble(2)), (bounds.getDouble(1), bounds.getDouble(0)))
       }
 
 
@@ -162,11 +168,9 @@ class TileSeqRetriever(sc: SparkContext, sqlContext: SQLContext, input: RDD[Row]
 
       val request = new TileSeqRequest(tiles)
 
-      val rdd: RDD[SeriesData[(Int, Int, Int), (Int, Int), Double, (Double, Double)]] = gen.generate(input, pickups, request).map(s => pickups(s).get) //returns SeriesData[TC,BC,V,X]
-
+      val rdd = gen.generate(input, pickups, request).flatMap(s => pickups(s)) //returns SeriesData[TC,BC,V,X]
       val output = rdd
-        .filter(t => t.bins.density() > 0)
-        .map({ tile =>
+      .map({ tile =>
           val data = for (bin <- tile.bins; i <- 0 until 8) yield {
             val data = java.lang.Double.doubleToLongBits(bin)
             ((data >> (i * 8)) & 0xff).asInstanceOf[Byte]
@@ -175,20 +179,44 @@ class TileSeqRetriever(sc: SparkContext, sqlContext: SQLContext, input: RDD[Row]
         })
 
         output.foreachPartition { tileDataIter =>
-          val s3Client = new AmazonS3Client(new BasicAWSCredentials("AKIAIRJE3R57Z2PRC5CA", "vbcT/1yDD10YofItNnMcOIQprGPgyGYJNuW02uYM"))
-          tileDataIter { tileData =>
+          val jedis = new Jedis("10.64.8.166", 6379)
+            tileDataIter.foreach { tileData =>
             val coord = tileData._1
             // store tile in bucket as layerName/level-xIdx-yIdx.bin
-            val key = s"testData/${coord._1}/${coord._2}/${coord._3}.bin"
+            val key = s"testData/${coord._1}/${coord._2}/${coord._3}"
 
-            val is = new ByteArrayInputStream(tileData._2.toArray)
-            val meta = new ObjectMetadata()
-
-            meta.setContentType("application/octet-stream")
-            s3Client.putObject(new PutObjectRequest("spark-live-tile-benchmark-test", key, is, meta) // scalastyle:ignore
-            .withCannedAcl(CannedAccessControlList.PublicRead))
+            val result = jedis.set(key, "hi")
+            println("SAFDSAFDSADFASDFASDFASDFASDFASDFSADFASDFASDFSADFAS")
           }
         }
+
+      // S3 output veresion
+      // val output = rdd
+      //   .filter(t => t.bins.density() > 0)
+      //   .map({ tile =>
+      //     val data = for (bin <- tile.bins; i <- 0 until 8) yield {
+      //       val data = java.lang.Double.doubleToLongBits(bin)
+      //       ((data >> (i * 8)) & 0xff).asInstanceOf[Byte]
+      //     }
+      //     (tile.coords, data.toSeq) //because tile.bins is a TraversableOnce, so convert to Seq to match rest of code (currently uses Seq)
+      //   })
+      //
+      //   output.foreachPartition { tileDataIter =>
+      //     val s3Client = new AmazonS3Client(new BasicAWSCredentials("AKIAIRJE3R57Z2PRC5CA", "vbcT/1yDD10YofItNnMcOIQprGPgyGYJNuW02uYM"))
+      //     val jedis = new Jedis("localhost")
+      //       tileDataIter { tileData =>
+      //       val coord = tileData._1
+      //       // store tile in bucket as layerName/level-xIdx-yIdx.bin
+      //       val key = s"testData/${coord._1}/${coord._2}/${coord._3}.bin"
+      //
+      //       val is = new ByteArrayInputStream(tileData._2.toArray)
+      //       val meta = new ObjectMetadata()
+      //
+      //       meta.setContentType("application/octet-stream")
+      //       s3Client.putObject(new PutObjectRequest("spark-live-tile-benchmark-test", key, is, meta) // scalastyle:ignore
+      //       .withCannedAcl(CannedAccessControlList.PublicRead))
+      //     }
+      //   }
 
       //import xdata-pipeline-ops jar and import S3 client LATER.
 
