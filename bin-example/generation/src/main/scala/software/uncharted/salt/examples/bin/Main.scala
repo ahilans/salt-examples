@@ -6,6 +6,7 @@ import software.uncharted.salt.core.analytic.numeric._
 import software.uncharted.salt.core.analytic.collection._
 
 import scala.collection.immutable
+import scala.util.Random
 //import spark stuff
 import org.apache.spark.SparkContext
 import org.apache.spark.SparkConf
@@ -13,8 +14,24 @@ import org.apache.spark.sql.SQLContext
 import org.apache.spark.sql.Row
 import org.apache.spark.sql.types.{StructField, StructType, StringType, DoubleType}
 import redis.clients.jedis.Jedis
+import scala.math._
 
 object Main {
+
+  private case class Bounds(minLon: Double, minLat: Double, maxLon: Double, maxLat: Double)
+
+  private def genTileSequence(numTiles: Int, level: Int, bounds: Bounds) = {
+    def rand(min: Double, max: Double) = min + (Random.nextDouble() * (max - min))
+    def randIndex = {
+      val lon = rand(bounds.minLon, bounds.maxLon)
+      val lat = rand(bounds.minLat, bounds.maxLat)
+      val tileX = ((lon + 180.0) / 360.0 * (1 << level)).toInt
+      val tileY = (1 << level) - ((1 - log(tan(toRadians(lat)) + 1 / cos(toRadians(lat))) / Pi) / 2.0 * (1 << level)).toInt
+      (level, tileX, tileY)
+    }
+    for (i <- 0 until numTiles) yield randIndex
+  }
+  private val nycBounds = Bounds(-74.06, 40.54, -72.72, 40.92)
   def main(args: Array[String]) = {
     if (args.length > 1) {
       //quit
@@ -72,12 +89,8 @@ object Main {
       .schema(schema)
       .load(s"hdfs://$inputPath")//input data assumed to be in hdfs //"hdfs://uscc0-master0.uncharted.software/xdata/data/SummerCamp2015/JulyData-processed/nyc_twitter_merged"
       .select("lon", "lat")
+      .repartition(200)
       .cache
-      // .registerTempTable("taxi_micro")
-
-    // filter rows we need
-    // val input = sqlContext.sql("select lon, lat, userid, tweet from taxi_micro")
-    // .rdd.cache()
 
     //create instance of tileRetriever for that specific data set
     val nycTwitterDataTileRetriever = TileSeqRetriever(sc, sqlContext, df)
@@ -87,8 +100,6 @@ object Main {
     //val partialFunc = TileRetriever2(sc, sqlContext, input)_
 
     //test params
-    val singleTileReq = Seq((0,0,0))
-    val multipleTileReq = Seq((8,77,90),(8,76,90),(8,74,88),(8,75,89),(8,77,89),(8,74,92),(8,75,90),(8,76,92),(8,75,88),(8,74,89),(8,75,91),(8,72,88),(8,75,92),(8,74,90),(8,78,89),(8,72,89))
     val mercator = "mercator"
     val cartesian = "cartesian"
     val typicalBinSize: Int = 256
@@ -96,97 +107,31 @@ object Main {
     //run same tile req multiple tmie to see average time to pull from spark
       //tihs is because after many calls caching is done possibly?
 
-    // val startTimeA: Long = System.currentTimeMillis
-    // nycTwitterDataTileRetriever.requestTile(singleTileReq, mercator, typicalBinSize, ((r: Row) => Some(1)), Some(MinMaxAggregator), CountAggregator)
-    // val endTimeA: Long = System.currentTimeMillis
-    // val runtimeA: Long = endTimeA - startTimeA
-    //
-    // val startTimeB: Long = System.currentTimeMillis
-    // nycTwitterDataTileRetriever.requestTile(singleTileReq, mercator, typicalBinSize, ((r: Row) => Some(1)), Some(MinMaxAggregator), CountAggregator)
-    // val endTimeB: Long = System.currentTimeMillis
-    // val runtimeB: Long = endTimeB - startTimeB
-    //
-    // val startTimeC: Long = System.currentTimeMillis
-    // nycTwitterDataTileRetriever.requestTile(singleTileReq, mercator, typicalBinSize, ((r: Row) => Some(1)), Some(MinMaxAggregator), CountAggregator)
-    // val endTimeC: Long = System.currentTimeMillis
-    // val runtimeC: Long = endTimeC - startTimeC
-    //
-    // val startTimeD: Long = System.currentTimeMillis
-    // nycTwitterDataTileRetriever.requestTile(singleTileReq, mercator, typicalBinSize, ((r: Row) => Some(1)), Some(MinMaxAggregator), CountAggregator)
-    // val endTimeD: Long = System.currentTimeMillis
-    // val runtimeD: Long = endTimeD - startTimeD
 
     val startTimeE: Long = System.currentTimeMillis
-    nycTwitterDataTileRetriever.requestTile(Seq((12,1206,1542)), mercator, typicalBinSize, ((r: Row) => Some(1)), Some(MinMaxAggregator), CountAggregator)
+    nycTwitterDataTileRetriever.requestTile(Seq((12,1206,1542)), mercator, 256, ((r: Row) => Some(1)), Some(MinMaxAggregator), CountAggregator)
     val endTimeE: Long = System.currentTimeMillis
     val runtimeE: Long = endTimeE - startTimeE
-    //
-    // val startTimeF: Long = System.currentTimeMillis
-    // nycTwitterDataTileRetriever.requestTile(Seq((12,1207,1542)), mercator, typicalBinSize, ((r: Row) => Some(1)), Some(MinMaxAggregator), CountAggregator)
-    // val endTimeF: Long = System.currentTimeMillis
-    // val runtimeF: Long = endTimeF - startTimeF
-    //
-    // val startTimeG: Long = System.currentTimeMillis
-    // nycTwitterDataTileRetriever.requestTile(Seq((12,1208,1542)), mercator, typicalBinSize, ((r: Row) => Some(1)), Some(MinMaxAggregator), CountAggregator)
-    // val endTimeG: Long = System.currentTimeMillis
-    // val runtimeG: Long = endTimeG - startTimeG
-    //
-    // val startTimeH: Long = System.currentTimeMillis
-    // nycTwitterDataTileRetriever.requestTile(Seq((12,1205,1542)), mercator, typicalBinSize, ((r: Row) => Some(1)), Some(MinMaxAggregator), CountAggregator)
-    // val endTimeH: Long = System.currentTimeMillis
-    // val runtimeH: Long = endTimeH - startTimeH
-    //
-    // val startTimeI: Long = System.currentTimeMillis
-    // nycTwitterDataTileRetriever.requestTile(Seq((12,1204,1542)), mercator, typicalBinSize, ((r: Row) => Some(1)), Some(MinMaxAggregator), CountAggregator)
-    // val endTimeI: Long = System.currentTimeMillis
-    // val runtimeI: Long = endTimeI - startTimeI
-    //
-    // val startTimeJ: Long = System.currentTimeMillis
-    // nycTwitterDataTileRetriever.requestTile(Seq((12,1209,1542)), mercator, typicalBinSize, ((r: Row) => Some(1)), Some(MinMaxAggregator), CountAggregator)
-    // val endTimeJ: Long = System.currentTimeMillis
-    // val runtimeJ: Long = endTimeJ - startTimeJ
-    //
-    // val startTimeK: Long = System.currentTimeMillis
-    // nycTwitterDataTileRetriever.requestTile(Seq((13,2412,3079),(13,2413,3079),(13,2412,3080),(13,2413,3080),(13,2413,3078),(13,2411,3079),(13,2414,3079),(13,2411,3080),(13,2414,3080),(13,2411,3078),(13,2412,3081),(13,2414,3078),(13,2413,3081),(13,2413,3079),(13,2412,3077),(13,2413,3077)), mercator, typicalBinSize, ((r: Row) => Some(1)), Some(MinMaxAggregator), CountAggregator)
-    // val endTimeK: Long = System.currentTimeMillis
-    // val runtimeK: Long = endTimeK - startTimeK
 
-    val jedis = new Jedis("10.64.8.166", 6379)
-    val result = jedis.set("testyo2", "hereisavalue")
-    println(result)
+    val tileSequences = for (i <- 0 until 4) yield genTileSequence(1024, 15, nycBounds)
+    val sequenceTimings = tileSequences.map { sequence =>
+      val startTime = System.currentTimeMillis
+      nycTwitterDataTileRetriever.requestTile(sequence, mercator, 256, r => Some(1), Some(MinMaxAggregator), CountAggregator)
+      System.currentTimeMillis - startTime
+    }
 
-    //
-    // // //run it for different tiles, still requesting one at a time though
-    // //   //repeat processing same tiles a couple times to see if run time decreases.
-    //
-    //
-    //
-    //
+
     println("=====================================================================")
     println("Time to load data into spark. This is the version where it's supposed to upload to s3")
     println(initRuntimeA)
     println("=====================================================================")
     println("Time to run job first time")
     println(runtimeE)
-    println("Time to run job 3 times")
-    // println(runtimeB)
-    // println(runtimeC)
-    // println(runtimeD)
-
-    println("=====================================================================")
-    println("Times for runnning LOWER LEVEL TILE REQUESTS")
-    println("=====================================================================")
-    // println(runtimeE)
-    // println(runtimeF)
-    // println(runtimeG)
-    // println(runtimeH)
-    // println(runtimeI)
-    // println(runtimeJ)
 
     println("=====================================================================")
     println("Times for runnning SEQUENCE OF TILES")
     println("=====================================================================")
-    //println(runtimeK)
+    sequenceTimings.foreach(println(_))
 
     //
     // //you can also try it for different tiling jobs

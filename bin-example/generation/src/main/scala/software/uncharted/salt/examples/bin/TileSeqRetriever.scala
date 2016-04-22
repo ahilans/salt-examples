@@ -124,7 +124,6 @@ object TileSeqRetriever {
 
 class TileSeqRetriever(sc: SparkContext, sqlContext: SQLContext, input: RDD[Row], bounds: Row) {
   //set up default tile size. tile size gives you the number of bins along a dimension.
-  val tile_size = 256
   //APPARENTLY METHODS CAN HAVE THEIR OWN IMPLICIT PARAMETERS AS WELL.
   def requestTile[T,U,V,W,X](
     tiles: Seq[(Int, Int, Int)],
@@ -141,8 +140,8 @@ class TileSeqRetriever(sc: SparkContext, sqlContext: SQLContext, input: RDD[Row]
 
       //get projection based on projection type specified
       val projection_object: NumericProjection[(Double, Double), (Int, Int, Int), (Int, Int)] = projection match {
-        case "mercator" => new MercatorProjection(Seq(0,12,13))
-        case "cartesian" => new CartesianProjection(Seq(0,12,13), (bounds.getDouble(3), bounds.getDouble(2)), (bounds.getDouble(1), bounds.getDouble(0)))
+        case "mercator" => new MercatorProjection(Seq(10,11,12,13,14,15))
+        case "cartesian" => new CartesianProjection(Seq(10,11,12,13,14,15), (bounds.getDouble(3), bounds.getDouble(2)), (bounds.getDouble(1), bounds.getDouble(0)))
       }
 
 
@@ -159,7 +158,7 @@ class TileSeqRetriever(sc: SparkContext, sqlContext: SQLContext, input: RDD[Row]
       val gen = TileGenerator(sc)
 
       //create series object for generate method.
-      val pickups = new Series((tile_size - 1, tile_size - 1),  //(255, 255)
+      val pickups = new Series((binSize - 1, binSize - 1),  //(255, 255)
         pickupExtractor, //ROW => (OPTION[(DOUBLE, DOUBLE)])
         projection_object, //PROJECTION
         valueExtractor,          //VALUE EXTRACTOR
@@ -186,7 +185,6 @@ class TileSeqRetriever(sc: SparkContext, sqlContext: SQLContext, input: RDD[Row]
             val key = s"testData/${coord._1}/${coord._2}/${coord._3}"
 
             val result = jedis.set(key, "hi")
-            println("SAFDSAFDSADFASDFASDFASDFASDFASDFSADFASDFASDFSADFAS")
           }
         }
 
