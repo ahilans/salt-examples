@@ -188,38 +188,6 @@ class TileSeqRetriever(sc: SparkContext, sqlContext: SQLContext, input: RDD[Row]
           }
         }
 
-      // S3 output veresion
-      // val output = rdd
-      //   .filter(t => t.bins.density() > 0)
-      //   .map({ tile =>
-      //     val data = for (bin <- tile.bins; i <- 0 until 8) yield {
-      //       val data = java.lang.Double.doubleToLongBits(bin)
-      //       ((data >> (i * 8)) & 0xff).asInstanceOf[Byte]
-      //     }
-      //     (tile.coords, data.toSeq) //because tile.bins is a TraversableOnce, so convert to Seq to match rest of code (currently uses Seq)
-      //   })
-      //
-      //   output.foreachPartition { tileDataIter =>
-      //     val s3Client = new AmazonS3Client(new BasicAWSCredentials("AKIAIRJE3R57Z2PRC5CA", "vbcT/1yDD10YofItNnMcOIQprGPgyGYJNuW02uYM"))
-      //     val jedis = new Jedis("localhost")
-      //       tileDataIter { tileData =>
-      //       val coord = tileData._1
-      //       // store tile in bucket as layerName/level-xIdx-yIdx.bin
-      //       val key = s"testData/${coord._1}/${coord._2}/${coord._3}.bin"
-      //
-      //       val is = new ByteArrayInputStream(tileData._2.toArray)
-      //       val meta = new ObjectMetadata()
-      //
-      //       meta.setContentType("application/octet-stream")
-      //       s3Client.putObject(new PutObjectRequest("spark-live-tile-benchmark-test", key, is, meta) // scalastyle:ignore
-      //       .withCannedAcl(CannedAccessControlList.PublicRead))
-      //     }
-      //   }
-
-      //import xdata-pipeline-ops jar and import S3 client LATER.
-
-
-
       output
   }
 }
